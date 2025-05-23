@@ -35,7 +35,6 @@ export async function prepareMcpConfig(
             REPO_NAME: repo,
             BRANCH_NAME: branch,
             REPO_DIR: process.env.GITHUB_WORKSPACE || process.cwd(),
-            TOKEN_CREATED_AT: new Date().toISOString(),
             GITHUB_API_URL: process.env.GITHUB_API_URL || "https://api.github.com",
           },
         },

@@ -86,14 +86,6 @@ server.tool(
       if (!githubToken) {
         throw new Error("GITHUB_TOKEN environment variable is required");
       }
-      
-      // Log token info for debugging
-      console.error(`[commit_files] Token type: ${githubToken.startsWith('ghs_') ? 'GitHub App' : githubToken.startsWith('ghp_') ? 'PAT' : 'Unknown'}`);
-      console.error(`[commit_files] Token created at: ${process.env.TOKEN_CREATED_AT || 'unknown'}`);
-      if (process.env.TOKEN_CREATED_AT) {
-        const tokenAge = Date.now() - new Date(process.env.TOKEN_CREATED_AT).getTime();
-        console.error(`[commit_files] Token age: ${(tokenAge/60000).toFixed(1)} minutes`);
-      }
 
       const processedFiles = files.map((filePath) => {
         if (filePath.startsWith("/")) {
