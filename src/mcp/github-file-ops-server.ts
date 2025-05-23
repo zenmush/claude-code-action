@@ -6,7 +6,8 @@ import { z } from "zod";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import fetch from "node-fetch";
-import { GITHUB_API_URL } from "../github/api/config";
+// Import removed - define inline to ensure subprocess gets the value
+const GITHUB_API_URL = process.env.GITHUB_API_URL || "https://api.github.com";
 
 type GitHubRef = {
   object: {
@@ -67,10 +68,31 @@ server.tool(
     const owner = REPO_OWNER;
     const repo = REPO_NAME;
     const branch = BRANCH_NAME;
+    console.error(`[commit_files] Starting commit for ${files.length} files to ${owner}/${repo}:${branch}`);
+    console.error(`[commit_files] REPO_DIR: ${REPO_DIR}`);
+    console.error(`[commit_files] Input files:`, files);
+    console.error(`[commit_files] Environment check:`, {
+      GITHUB_TOKEN: process.env.GITHUB_TOKEN ? 'Present' : 'Missing',
+      REPO_OWNER,
+      REPO_NAME,
+      BRANCH_NAME,
+      REPO_DIR,
+      GITHUB_API_URL,
+      CWD: process.cwd(),
+    });
+    
     try {
       const githubToken = process.env.GITHUB_TOKEN;
       if (!githubToken) {
         throw new Error("GITHUB_TOKEN environment variable is required");
+      }
+      
+      // Log token info for debugging
+      console.error(`[commit_files] Token type: ${githubToken.startsWith('ghs_') ? 'GitHub App' : githubToken.startsWith('ghp_') ? 'PAT' : 'Unknown'}`);
+      console.error(`[commit_files] Token created at: ${process.env.TOKEN_CREATED_AT || 'unknown'}`);
+      if (process.env.TOKEN_CREATED_AT) {
+        const tokenAge = Date.now() - new Date(process.env.TOKEN_CREATED_AT).getTime();
+        console.error(`[commit_files] Token age: ${(tokenAge/60000).toFixed(1)} minutes`);
       }
 
       const processedFiles = files.map((filePath) => {
@@ -123,7 +145,12 @@ server.tool(
             ? filePath
             : join(REPO_DIR, filePath);
 
-          const content = await readFile(fullPath, "utf-8");
+          console.error(`[commit_files] Reading file: ${fullPath}`);
+          const content = await readFile(fullPath, "utf-8").catch((error) => {
+            console.error(`[commit_files] Failed to read file '${fullPath}':`, error);
+            throw new Error(`Failed to read file '${fullPath}': ${error.message || error}`);
+          });
+          console.error(`[commit_files] Successfully read file: ${fullPath} (${content.length} chars)`);
           return {
             path: filePath,
             mode: "100644",
@@ -186,6 +213,10 @@ server.tool(
 
       // 6. Update the reference to point to the new commit
       const updateRefUrl = `${GITHUB_API_URL}/repos/${owner}/${repo}/git/refs/heads/${branch}`;
+      console.error(`[commit_files] Updating reference: ${updateRefUrl}`);
+      console.error(`[commit_files] New commit SHA: ${newCommitData.sha}`);
+      console.error(`[commit_files] Base SHA was: ${baseSha}`);
+      
       const updateRefResponse = await fetch(updateRefUrl, {
         method: "PATCH",
         headers: {
@@ -200,8 +231,20 @@ server.tool(
         }),
       });
 
+      console.error(`[commit_files] Update reference response status: ${updateRefResponse.status}`);
+      
       if (!updateRefResponse.ok) {
         const errorText = await updateRefResponse.text();
+        console.error(`[commit_files] Update reference error body: "${errorText}"`);
+        
+        // Log additional debugging info for 500 errors
+        if (updateRefResponse.status === 500) {
+          const requestId = updateRefResponse.headers.get('x-github-request-id');
+          console.error(`[commit_files] GitHub Request ID: ${requestId}`);
+          console.error(`[commit_files] This appears to be an internal GitHub error`);
+          console.error(`[commit_files] Token was valid for tree/commit creation but failed for ref update`);
+        }
+        
         throw new Error(
           `Failed to update reference: ${updateRefResponse.status} - ${errorText}`,
         );
@@ -231,16 +274,8 @@ server.tool(
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error: ${errorMessage}`,
-          },
-        ],
-        error: errorMessage,
-        isError: true,
-      };
+      console.error(`[commit_files] Error: ${errorMessage}`);
+      throw new Error(errorMessage);
     }
   },
 );
@@ -380,6 +415,10 @@ server.tool(
 
       // 6. Update the reference to point to the new commit
       const updateRefUrl = `${GITHUB_API_URL}/repos/${owner}/${repo}/git/refs/heads/${branch}`;
+      console.error(`[commit_files] Updating reference: ${updateRefUrl}`);
+      console.error(`[commit_files] New commit SHA: ${newCommitData.sha}`);
+      console.error(`[commit_files] Base SHA was: ${baseSha}`);
+      
       const updateRefResponse = await fetch(updateRefUrl, {
         method: "PATCH",
         headers: {
@@ -394,8 +433,20 @@ server.tool(
         }),
       });
 
+      console.error(`[commit_files] Update reference response status: ${updateRefResponse.status}`);
+      
       if (!updateRefResponse.ok) {
         const errorText = await updateRefResponse.text();
+        console.error(`[commit_files] Update reference error body: "${errorText}"`);
+        
+        // Log additional debugging info for 500 errors
+        if (updateRefResponse.status === 500) {
+          const requestId = updateRefResponse.headers.get('x-github-request-id');
+          console.error(`[commit_files] GitHub Request ID: ${requestId}`);
+          console.error(`[commit_files] This appears to be an internal GitHub error`);
+          console.error(`[commit_files] Token was valid for tree/commit creation but failed for ref update`);
+        }
+        
         throw new Error(
           `Failed to update reference: ${updateRefResponse.status} - ${errorText}`,
         );
@@ -425,16 +476,8 @@ server.tool(
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error: ${errorMessage}`,
-          },
-        ],
-        error: errorMessage,
-        isError: true,
-      };
+      console.error(`[commit_files] Error: ${errorMessage}`);
+      throw new Error(errorMessage);
     }
   },
 );
