@@ -220,70 +220,155 @@ server.tool(
       console.error(`[commit_files] Updating reference: ${updateRefUrl}`);
       console.error(`[commit_files] New commit SHA: ${newCommitData.sha}`);
       console.error(`[commit_files] Base SHA was: ${baseSha}`);
-      console.error(`[commit_files] Request body:`, JSON.stringify({
+      
+      // Log full request context before making the request
+      const requestBody = JSON.stringify({
         sha: newCommitData.sha,
         force: false,
-      }));
+      });
+      const requestHeaders = {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${githubToken}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+      };
+      
+      console.error(`[commit_files] Full request details:`, {
+        url: updateRefUrl,
+        method: 'PATCH',
+        headers: {
+          ...requestHeaders,
+          Authorization: `Bearer [TOKEN_LENGTH:${githubToken?.length || 0}]`,
+        },
+        body: requestBody,
+        timestamp: new Date().toISOString(),
+        environment: {
+          NODE_VERSION: process.version,
+          PLATFORM: process.platform,
+          ARCH: process.arch,
+        },
+        previousOperations: {
+          treeCreated: treeData?.sha ? 'YES' : 'NO',
+          commitCreated: newCommitData?.sha ? 'YES' : 'NO',
+          treeSha: treeData?.sha,
+          commitSha: newCommitData?.sha,
+          baseSha: baseSha,
+        }
+      });
+      
+      // Log memory usage before request
+      const memoryBefore = process.memoryUsage();
+      console.error(`[commit_files] Memory before request:`, {
+        rss: `${(memoryBefore.rss / 1024 / 1024).toFixed(2)} MB`,
+        heapUsed: `${(memoryBefore.heapUsed / 1024 / 1024).toFixed(2)} MB`,
+      });
       
       let updateRefResponse;
+      const requestStartTime = Date.now();
+      
       try {
         updateRefResponse = await fetch(updateRefUrl, {
           method: "PATCH",
-          headers: {
-            Accept: "application/vnd.github+json",
-            Authorization: `Bearer ${githubToken}`,
-            "X-GitHub-Api-Version": "2022-11-28",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            sha: newCommitData.sha,
-            force: false,
-          }),
+          headers: requestHeaders,
+          body: requestBody,
         });
       } catch (fetchError) {
-        console.error(`[commit_files] FETCH ERROR during reference update:`, fetchError);
+        const requestDuration = Date.now() - requestStartTime;
+        console.error(`[commit_files] FETCH ERROR during reference update after ${requestDuration}ms:`, fetchError);
         logDetailedError('commit_files_fetch', fetchError);
-        throw new Error(`Network error during reference update: ${fetchError?.message || 'Unknown fetch error'}`);
+        throw new Error(`Network error during reference update after ${requestDuration}ms: ${fetchError?.message || 'Unknown fetch error'}`);
       }
+      
+      const requestDuration = Date.now() - requestStartTime;
+      console.error(`[commit_files] Request completed in ${requestDuration}ms`);
+      console.error(`[commit_files] Response received at: ${new Date().toISOString()}`);
 
       console.error(`[commit_files] Update reference response status: ${updateRefResponse.status}`);
       console.error(`[commit_files] Response headers:`, Object.fromEntries(updateRefResponse.headers.entries()));
       
+      // Log specific important headers
+      console.error(`[commit_files] Key response headers:`, {
+        'x-github-request-id': updateRefResponse.headers.get('x-github-request-id'),
+        'x-ratelimit-remaining': updateRefResponse.headers.get('x-ratelimit-remaining'),
+        'x-ratelimit-reset': updateRefResponse.headers.get('x-ratelimit-reset'),
+        'content-type': updateRefResponse.headers.get('content-type'),
+        'content-length': updateRefResponse.headers.get('content-length'),
+        'server': updateRefResponse.headers.get('server'),
+      });
+      
       if (!updateRefResponse.ok) {
-        let errorText;
+        console.error(`[commit_files] ERROR RESPONSE - Status: ${updateRefResponse.status} ${updateRefResponse.statusText}`);
+        
+        // Capture the entire raw response body
+        let responseArrayBuffer;
+        let responseText = '';
+        let responseHex = '';
+        let responseBase64 = '';
+        
         try {
-          errorText = await updateRefResponse.text();
-        } catch (textError) {
-          console.error(`[commit_files] Failed to read error response text:`, textError);
-          errorText = 'Unable to read error response';
+          // Clone the response so we can read it multiple ways
+          const clonedResponse = updateRefResponse.clone();
+          
+          // Get raw bytes
+          responseArrayBuffer = await updateRefResponse.arrayBuffer();
+          const responseBytes = new Uint8Array(responseArrayBuffer);
+          
+          // Convert to text (with error handling for non-UTF8)
+          responseText = new TextDecoder('utf-8', { fatal: false }).decode(responseBytes);
+          
+          // Convert to hex for debugging binary responses
+          responseHex = Array.from(responseBytes.slice(0, 1000)) // First 1000 bytes to avoid huge logs
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join(' ');
+          
+          // Convert to base64
+          responseBase64 = Buffer.from(responseBytes).toString('base64');
+          
+          console.error(`[commit_files] COMPLETE ERROR RESPONSE:`);
+          console.error(`[commit_files] ===== RESPONSE BODY (TEXT) =====`);
+          console.error(responseText);
+          console.error(`[commit_files] ===== END RESPONSE BODY =====`);
+          console.error(`[commit_files] Response body length: ${responseBytes.length} bytes`);
+          console.error(`[commit_files] Response body (first 1000 bytes as hex): ${responseHex}${responseBytes.length > 1000 ? '...' : ''}`);
+          console.error(`[commit_files] Response body (base64): ${responseBase64}`);
+          
+          // Try to parse as JSON if it looks like JSON
+          if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+            try {
+              const parsedError = JSON.parse(responseText);
+              console.error(`[commit_files] Parsed error object:`, JSON.stringify(parsedError, null, 2));
+            } catch (e) {
+              console.error(`[commit_files] Response looks like JSON but failed to parse:`, e);
+            }
+          }
+          
+        } catch (readError) {
+          console.error(`[commit_files] CRITICAL: Failed to read error response:`, readError);
+          logDetailedError('commit_files_response_read', readError);
+          responseText = `Failed to read response: ${readError}`;
         }
         
-        console.error(`[commit_files] Update reference error body: "${errorText}"`);
-        console.error(`[commit_files] Error body length: ${errorText?.length}`);
-        console.error(`[commit_files] Error body type: ${typeof errorText}`);
+        // Log memory state after error
+        const memoryAfter = process.memoryUsage();
+        console.error(`[commit_files] Memory after error:`, {
+          rss: `${(memoryAfter.rss / 1024 / 1024).toFixed(2)} MB`,
+          heapUsed: `${(memoryAfter.heapUsed / 1024 / 1024).toFixed(2)} MB`,
+        });
         
-        // Log additional debugging info for 500 errors
+        // Special handling for 500 errors
         if (updateRefResponse.status === 500) {
           const requestId = updateRefResponse.headers.get('x-github-request-id');
+          console.error(`[commit_files] ===== GITHUB 500 ERROR DETAILS =====`);
           console.error(`[commit_files] GitHub Request ID: ${requestId}`);
-          console.error(`[commit_files] This appears to be an internal GitHub error`);
-          console.error(`[commit_files] Token was valid for tree/commit creation but failed for ref update`);
-          console.error(`[commit_files] Branch protection rules or permissions might be an issue`);
-        }
-        
-        // Parse error if it's JSON
-        let parsedError;
-        try {
-          if (errorText && errorText.trim().startsWith('{')) {
-            parsedError = JSON.parse(errorText);
-            console.error(`[commit_files] Parsed error:`, parsedError);
-          }
-        } catch (e) {
-          console.error(`[commit_files] Error text is not JSON`);
+          console.error(`[commit_files] This is an internal GitHub server error`);
+          console.error(`[commit_files] The error may be transient - consider retrying`);
+          console.error(`[commit_files] Note: Tree (${treeData?.sha}) and commit (${newCommitData?.sha}) were created successfully`);
+          console.error(`[commit_files] Only the reference update failed`);
+          console.error(`[commit_files] ===================================`);
         }
         
         throw new Error(
-          `Failed to update reference: ${updateRefResponse.status} - ${errorText}`,
+          `Failed to update reference: ${updateRefResponse.status} - ${responseText || 'No response body'}`,
         );
       }
 
