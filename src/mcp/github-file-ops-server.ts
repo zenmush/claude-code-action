@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GitHub File Operations MCP Server
+// GitHub File Operations MCP Server - Enhanced with detailed error logging
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -51,6 +51,18 @@ const server = new McpServer({
   name: "GitHub File Operations Server",
   version: "0.0.1",
 });
+
+// Enhanced error logging helper
+function logDetailedError(prefix: string, error: any) {
+  console.error(`[${prefix}] FULL ERROR CAUGHT:`, error);
+  console.error(`[${prefix}] Error type:`, typeof error);
+  console.error(`[${prefix}] Error constructor:`, error?.constructor?.name);
+  console.error(`[${prefix}] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
+  if (error && typeof error === 'object') {
+    console.error(`[${prefix}] Error properties:`, Object.keys(error));
+    console.error(`[${prefix}] Error JSON:`, JSON.stringify(error, null, 2));
+  }
+}
 
 // Commit files tool
 server.tool(
@@ -208,26 +220,47 @@ server.tool(
       console.error(`[commit_files] Updating reference: ${updateRefUrl}`);
       console.error(`[commit_files] New commit SHA: ${newCommitData.sha}`);
       console.error(`[commit_files] Base SHA was: ${baseSha}`);
+      console.error(`[commit_files] Request body:`, JSON.stringify({
+        sha: newCommitData.sha,
+        force: false,
+      }));
       
-      const updateRefResponse = await fetch(updateRefUrl, {
-        method: "PATCH",
-        headers: {
-          Accept: "application/vnd.github+json",
-          Authorization: `Bearer ${githubToken}`,
-          "X-GitHub-Api-Version": "2022-11-28",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          sha: newCommitData.sha,
-          force: false,
-        }),
-      });
+      let updateRefResponse;
+      try {
+        updateRefResponse = await fetch(updateRefUrl, {
+          method: "PATCH",
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${githubToken}`,
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sha: newCommitData.sha,
+            force: false,
+          }),
+        });
+      } catch (fetchError) {
+        console.error(`[commit_files] FETCH ERROR during reference update:`, fetchError);
+        logDetailedError('commit_files_fetch', fetchError);
+        throw new Error(`Network error during reference update: ${fetchError?.message || 'Unknown fetch error'}`);
+      }
 
       console.error(`[commit_files] Update reference response status: ${updateRefResponse.status}`);
+      console.error(`[commit_files] Response headers:`, Object.fromEntries(updateRefResponse.headers.entries()));
       
       if (!updateRefResponse.ok) {
-        const errorText = await updateRefResponse.text();
+        let errorText;
+        try {
+          errorText = await updateRefResponse.text();
+        } catch (textError) {
+          console.error(`[commit_files] Failed to read error response text:`, textError);
+          errorText = 'Unable to read error response';
+        }
+        
         console.error(`[commit_files] Update reference error body: "${errorText}"`);
+        console.error(`[commit_files] Error body length: ${errorText?.length}`);
+        console.error(`[commit_files] Error body type: ${typeof errorText}`);
         
         // Log additional debugging info for 500 errors
         if (updateRefResponse.status === 500) {
@@ -235,6 +268,18 @@ server.tool(
           console.error(`[commit_files] GitHub Request ID: ${requestId}`);
           console.error(`[commit_files] This appears to be an internal GitHub error`);
           console.error(`[commit_files] Token was valid for tree/commit creation but failed for ref update`);
+          console.error(`[commit_files] Branch protection rules or permissions might be an issue`);
+        }
+        
+        // Parse error if it's JSON
+        let parsedError;
+        try {
+          if (errorText && errorText.trim().startsWith('{')) {
+            parsedError = JSON.parse(errorText);
+            console.error(`[commit_files] Parsed error:`, parsedError);
+          }
+        } catch (e) {
+          console.error(`[commit_files] Error text is not JSON`);
         }
         
         throw new Error(
@@ -264,9 +309,20 @@ server.tool(
         ],
       };
     } catch (error) {
+      logDetailedError('commit_files', error);
+      
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error(`[commit_files] Error: ${errorMessage}`);
+      console.error(`[commit_files] Final error message being thrown: "${errorMessage}"`);
+      
+      // Ensure we're throwing a proper Error object with a message
+      if (!errorMessage || errorMessage === 'undefined' || errorMessage === '[object Object]') {
+        console.error(`[commit_files] WARNING: Error message is undefined or object, using fallback`);
+        const fallbackMessage = error instanceof Error && error.stack 
+          ? `Failed to commit files: ${error.stack.split('\n')[0]}`
+          : 'Failed to commit files: Unknown error occurred';
+        throw new Error(fallbackMessage);
+      }
       throw new Error(errorMessage);
     }
   },
@@ -407,36 +463,69 @@ server.tool(
 
       // 6. Update the reference to point to the new commit
       const updateRefUrl = `${GITHUB_API_URL}/repos/${owner}/${repo}/git/refs/heads/${branch}`;
-      console.error(`[commit_files] Updating reference: ${updateRefUrl}`);
-      console.error(`[commit_files] New commit SHA: ${newCommitData.sha}`);
-      console.error(`[commit_files] Base SHA was: ${baseSha}`);
+      console.error(`[delete_files] Updating reference: ${updateRefUrl}`);
+      console.error(`[delete_files] New commit SHA: ${newCommitData.sha}`);
+      console.error(`[delete_files] Base SHA was: ${baseSha}`);
+      console.error(`[delete_files] Request body:`, JSON.stringify({
+        sha: newCommitData.sha,
+        force: false,
+      }));
       
-      const updateRefResponse = await fetch(updateRefUrl, {
-        method: "PATCH",
-        headers: {
-          Accept: "application/vnd.github+json",
-          Authorization: `Bearer ${githubToken}`,
-          "X-GitHub-Api-Version": "2022-11-28",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          sha: newCommitData.sha,
-          force: false,
-        }),
-      });
+      let updateRefResponse;
+      try {
+        updateRefResponse = await fetch(updateRefUrl, {
+          method: "PATCH",
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${githubToken}`,
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sha: newCommitData.sha,
+            force: false,
+          }),
+        });
+      } catch (fetchError) {
+        console.error(`[delete_files] FETCH ERROR during reference update:`, fetchError);
+        logDetailedError('delete_files_fetch', fetchError);
+        throw new Error(`Network error during reference update: ${fetchError?.message || 'Unknown fetch error'}`);
+      }
 
-      console.error(`[commit_files] Update reference response status: ${updateRefResponse.status}`);
+      console.error(`[delete_files] Update reference response status: ${updateRefResponse.status}`);
+      console.error(`[delete_files] Response headers:`, Object.fromEntries(updateRefResponse.headers.entries()));
       
       if (!updateRefResponse.ok) {
-        const errorText = await updateRefResponse.text();
-        console.error(`[commit_files] Update reference error body: "${errorText}"`);
+        let errorText;
+        try {
+          errorText = await updateRefResponse.text();
+        } catch (textError) {
+          console.error(`[delete_files] Failed to read error response text:`, textError);
+          errorText = 'Unable to read error response';
+        }
+        
+        console.error(`[delete_files] Update reference error body: "${errorText}"`);
+        console.error(`[delete_files] Error body length: ${errorText?.length}`);
+        console.error(`[delete_files] Error body type: ${typeof errorText}`);
         
         // Log additional debugging info for 500 errors
         if (updateRefResponse.status === 500) {
           const requestId = updateRefResponse.headers.get('x-github-request-id');
-          console.error(`[commit_files] GitHub Request ID: ${requestId}`);
-          console.error(`[commit_files] This appears to be an internal GitHub error`);
-          console.error(`[commit_files] Token was valid for tree/commit creation but failed for ref update`);
+          console.error(`[delete_files] GitHub Request ID: ${requestId}`);
+          console.error(`[delete_files] This appears to be an internal GitHub error`);
+          console.error(`[delete_files] Token was valid for tree/commit creation but failed for ref update`);
+          console.error(`[delete_files] Branch protection rules or permissions might be an issue`);
+        }
+        
+        // Parse error if it's JSON
+        let parsedError;
+        try {
+          if (errorText && errorText.trim().startsWith('{')) {
+            parsedError = JSON.parse(errorText);
+            console.error(`[delete_files] Parsed error:`, parsedError);
+          }
+        } catch (e) {
+          console.error(`[delete_files] Error text is not JSON`);
         }
         
         throw new Error(
@@ -466,9 +555,20 @@ server.tool(
         ],
       };
     } catch (error) {
+      logDetailedError('delete_files', error);
+      
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error(`[commit_files] Error: ${errorMessage}`);
+      console.error(`[delete_files] Final error message being thrown: "${errorMessage}"`);
+      
+      // Ensure we're throwing a proper Error object with a message
+      if (!errorMessage || errorMessage === 'undefined' || errorMessage === '[object Object]') {
+        console.error(`[delete_files] WARNING: Error message is undefined or object, using fallback`);
+        const fallbackMessage = error instanceof Error && error.stack 
+          ? `Failed to delete files: ${error.stack.split('\n')[0]}`
+          : 'Failed to delete files: Unknown error occurred';
+        throw new Error(fallbackMessage);
+      }
       throw new Error(errorMessage);
     }
   },
