@@ -51,8 +51,8 @@ export async function setupBranch(
 
       const branchName = prData.headRefName;
 
-      // Execute git commands to checkout PR branch
-      await $`git fetch origin ${branchName}`;
+      // Execute git commands to checkout PR branch (shallow fetch for performance)
+      await $`git fetch origin --depth=1 ${branchName}`;
       await $`git checkout ${branchName}`;
 
       console.log(`Successfully checked out PR branch for PR #${entityNumber}`);
@@ -98,8 +98,8 @@ export async function setupBranch(
       sha: currentSHA,
     });
 
-    // Checkout the new branch
-    await $`git fetch origin ${newBranch}`;
+    // Checkout the new branch (shallow fetch for performance)
+    await $`git fetch origin --depth=1 ${newBranch}`;
     await $`git checkout ${newBranch}`;
 
     console.log(
