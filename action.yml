@@ -39,7 +39,7 @@ inputs:
 
   # Auth configuration
   anthropic_api_key:
-    description: "Anthropic API key (required for direct API, not needed for Bedrock/Vertex)"
+    description: "Anthropic API key (required for direct API, not needed for Bedrock/Vertex/Max plan)"
     required: false
   github_token:
     description: "GitHub token with repo and pull request permissions (optional if using GitHub App)"
@@ -50,6 +50,10 @@ inputs:
     default: "false"
   use_vertex:
     description: "Use Google Vertex AI with OIDC authentication instead of direct Anthropic API"
+    required: false
+    default: "false"
+  use_max_plan:
+    description: "Use Max plan authentication (requires pre-authenticated self-hosted runner)"
     required: false
     default: "false"
 
@@ -90,10 +94,13 @@ runs:
         DIRECT_PROMPT: ${{ inputs.direct_prompt }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        USE_MAX_PLAN: ${{ inputs.use_max_plan }}
 
     - name: Run Claude Code
       id: claude-code
       if: steps.prepare.outputs.contains_trigger == 'true'
+      # TODO: Update this to your fork of claude-code-base-action with Max plan support
+      # uses: YOUR_USERNAME/claude-code-base-action@main
       uses: anthropics/claude-code-base-action@beta
       with:
         prompt_file: /tmp/claude-prompts/claude-prompt.txt
@@ -104,6 +111,7 @@ runs:
         mcp_config: ${{ steps.prepare.outputs.mcp_config }}
         use_bedrock: ${{ inputs.use_bedrock }}
         use_vertex: ${{ inputs.use_vertex }}
+        use_max_plan: ${{ inputs.use_max_plan }}
         anthropic_api_key: ${{ inputs.anthropic_api_key }}
       env:
         # Model configuration
