@@ -67,7 +67,7 @@ jobs:
 
 | Input                 | Description                                                                                                          | Required | Default   |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------- | -------- | --------- |
-| `anthropic_api_key`   | Anthropic API key (required for direct API, not needed for Bedrock/Vertex)                                           | No\*     | -         |
+| `anthropic_api_key`   | Anthropic API key (required for direct API, not needed for Bedrock/Vertex/Max plan)                                  | No\*     | -         |
 | `direct_prompt`       | Direct prompt for Claude to execute automatically without needing a trigger (for automated workflows)                | No       | -         |
 | `timeout_minutes`     | Timeout in minutes for execution                                                                                     | No       | `30`      |
 | `github_token`        | GitHub token for Claude to operate with. **Only include this if you're connecting a custom GitHub app of your own!** | No       | -         |
@@ -75,13 +75,14 @@ jobs:
 | `anthropic_model`     | **DEPRECATED**: Use `model` instead. Kept for backward compatibility.                                                | No       | -         |
 | `use_bedrock`         | Use Amazon Bedrock with OIDC authentication instead of direct Anthropic API                                          | No       | `false`   |
 | `use_vertex`          | Use Google Vertex AI with OIDC authentication instead of direct Anthropic API                                        | No       | `false`   |
+| `use_max_plan`        | Use Max plan authentication (requires pre-authenticated self-hosted runner)                                          | No       | `false`   |
 | `allowed_tools`       | Additional tools for Claude to use (the base GitHub tools will always be included)                                   | No       | ""        |
 | `disallowed_tools`    | Tools that Claude should never use                                                                                   | No       | ""        |
 | `custom_instructions` | Additional custom instructions to include in the prompt for Claude                                                   | No       | ""        |
 | `assignee_trigger`    | The assignee username that triggers the action (e.g. @claude). Only used for issue assignment                        | No       | -         |
 | `trigger_phrase`      | The trigger phrase to look for in comments, issue/PR bodies, and issue titles                                        | No       | `@claude` |
 
-\*Required when using direct Anthropic API (default and when not using Bedrock or Vertex)
+\*Required when using direct Anthropic API (default and when not using Bedrock, Vertex, or Max plan)
 
 > **Note**: This action is currently in beta. Features and APIs may change as we continue to improve the integration.
 
@@ -264,11 +265,12 @@ Use a specific Claude model:
 
 ## Cloud Providers
 
-You can authenticate with Claude using any of these three methods:
+You can authenticate with Claude using any of these four methods:
 
 1. Direct Anthropic API (default)
 2. Amazon Bedrock with OIDC authentication
 3. Google Vertex AI with OIDC authentication
+4. Max plan on self-hosted runners (pre-authenticated Claude Code)
 
 For detailed setup instructions for AWS Bedrock and Google Vertex AI, see the [official documentation](https://docs.anthropic.com/en/docs/claude-code/github-actions#using-with-aws-bedrock-%26-google-vertex-ai).
 
@@ -303,6 +305,47 @@ Use provider-specific model names based on your chosen provider:
     use_vertex: "true"
     # ... other inputs
 ```
+
+### Using Max Plan Authentication (Self-Hosted Runners)
+
+If you have a Claude Max subscription, you can use it on self-hosted runners without needing an API key.
+
+**Requirements:**
+
+- Self-hosted runner with Claude Code installed and authenticated
+- Max plan subscription (5x or 20x Pro usage)
+
+**Setup Instructions:**
+
+1. **Install Claude Code on your self-hosted runner:**
+
+   ```bash
+   # Download and install Claude Code on your runner
+   # Visit https://docs.anthropic.com/en/docs/claude-code/overview#install-and-authenticate
+   ```
+
+2. **Authenticate with your Max plan:**
+
+   ```bash
+   # On the self-hosted runner, authenticate Claude Code
+   claude --login
+   # Follow the prompts to log in with your Claude credentials
+   ```
+
+3. **Update your workflow to use Max plan:**
+   ```yaml
+   - uses: anthropics/claude-code-action@beta
+     with:
+       use_max_plan: "true"
+       github_token: ${{ secrets.GITHUB_TOKEN }}
+       # Note: No anthropic_api_key needed
+   ```
+
+**Important Considerations:**
+
+- **Self-hosted runners only**: Max plan authentication requires persistent state that only exists on self-hosted runners
+- **Pre-authentication required**: Claude Code must be authenticated before the workflow runs
+- **Security**: Ensure your self-hosted runners are properly secured as they have access to your Max plan
 
 ### OIDC Authentication for Bedrock and Vertex
 

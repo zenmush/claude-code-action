@@ -1,0 +1,46 @@
+name: Claude Assistant (Max Plan)
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write # Required for OIDC authentication with GitHub
+
+jobs:
+  claude-response:
+    # IMPORTANT: Must use self-hosted runner with pre-authenticated Claude Code
+    runs-on: self-hosted
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Run Claude with Max Plan
+        uses: anthropics/claude-code-action@beta
+        with:
+          # Enable Max plan authentication
+          use_max_plan: "true"
+          # Use the GitHub App token
+          github_token: ${{ steps.app-token.outputs.token }}
+          # No anthropic_api_key needed with Max plan
+
+          # Optional: Configure allowed tools
+          allowed_tools: "Bash(npm install),Bash(npm test),Edit,Replace"
+
+          # Optional: Custom trigger phrase
+          trigger_phrase: "@claude"
+
+          # Optional: Model selection (if supported by your Max plan)
+          # model: "claude-3-5-sonnet-20241022"

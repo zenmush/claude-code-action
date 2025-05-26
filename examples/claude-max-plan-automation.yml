@@ -1,0 +1,47 @@
+name: Automated Code Review with Max Plan
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write # Required for OIDC authentication with GitHub
+
+jobs:
+  automated-review:
+    # Must use self-hosted runner with Claude Code pre-authenticated
+    runs-on: self-hosted
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Auto Review PR with Claude
+        uses: anthropics/claude-code-action@beta
+        with:
+          # Enable Max plan authentication
+          use_max_plan: "true"
+          github_token: ${{ steps.app-token.outputs.token }}
+
+          # Direct prompt for automated review
+          direct_prompt: |
+            Please review this pull request and provide feedback on:
+            1. Code quality and best practices
+            2. Potential bugs or issues
+            3. Security concerns
+            4. Performance implications
+            5. Suggestions for improvement
+
+            Be constructive and specific in your feedback.
+
+          # Allow file operations but no bash commands for safety
+          allowed_tools: "Edit,Replace,View,GlobTool,GrepTool"
+          disallowed_tools: "Bash"
+
+          # Timeout for large PRs
+          timeout_minutes: "45"
